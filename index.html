@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f7fb">
+  <title>ボッチャ 得点管理</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, "Noto Sans JP", sans-serif; color: #172033; background: #f5f7fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 18px 12px 36px; }
+    main { width: min(100%, 620px); margin: 0 auto; }
+    h1 { text-align: center; font-size: clamp(1.6rem, 5vw, 2.1rem); margin: 8px 0 18px; }
+    .totals { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .team { border-radius: 16px; padding: 16px 10px; text-align: center; }
+    .blue { background: #e6efff; color: #174ea6; }
+    .red { background: #ffebeb; color: #a91f2b; }
+    .team-name { font-size: 1.1rem; font-weight: 800; }
+    .total { font-size: clamp(2.2rem, 9vw, 3rem); font-weight: 850; line-height: 1.25; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    h2 { font-size: 1.15rem; margin: 22px 2px 10px; }
+    .round { background: white; border: 1px solid #e2e7f0; border-radius: 14px; padding: 13px; margin: 10px 0; }
+    .round-head { font-weight: 800; margin-bottom: 10px; }
+    .inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { display: block; font-size: .9rem; font-weight: 750; margin-bottom: 5px; }
+    input { width: 100%; min-height: 54px; border: 2px solid #d9dfeb; border-radius: 11px; padding: 8px 12px; font: inherit; font-size: 1.35rem; font-weight: 750; text-align: center; background: #fff; color: #172033; }
+    input:focus { outline: 3px solid #a9c7ff; border-color: #3975d7; }
+    .blue-label { color: #174ea6; } .red-label { color: #a91f2b; }
+    button { border: 0; border-radius: 12px; min-height: 52px; padding: 12px 16px; font: inherit; font-weight: 800; cursor: pointer; }
+    .add { width: 100%; color: white; background: #245db5; margin: 8px 0 12px; }
+    .reset { width: 100%; background: #fff; color: #a91f2b; border: 1px solid #e4bfc2; }
+    .hint { color: #647087; font-size: .83rem; text-align: center; line-height: 1.6; margin-top: 14px; }
+    @media (min-width: 520px) { body { padding-top: 28px; } .round { padding: 16px; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>ボッチャ 得点管理</h1>
+  <section class="totals" aria-label="合計得点">
+    <div class="team blue"><div class="team-name">青チーム</div><div class="total" id="blueTotal">0点</div></div>
+    <div class="team red"><div class="team-name">赤チーム</div><div class="total" id="redTotal">0点</div></div>
+  </section>
+
+  <h2>エンドごとの得点入力</h2>
+  <section id="rounds"></section>
+  <button class="add" id="addRound" type="button">＋ エンドを追加</button>
+  <button class="reset" id="reset" type="button">得点をリセット</button>
+  <p class="hint">入力した得点は、この端末のブラウザに自動保存されます。<br>同じ端末で開き直しても、続きから入力できます。</p>
+</main>
+<script>
+(() => {
+  const STORAGE_KEY = "boccia-score-v1";
+  const roundsEl = document.getElementById("rounds");
+  let scores = load();
+
+  function load() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (Array.isArray(saved) && saved.length) {
+        return saved.map(x => ({ blue: valid(x.blue), red: valid(x.red) }));
+      }
+    } catch (_) {}
+    return Array.from({length: 4}, () => ({blue: "", red: ""}));
+  }
+  function valid(value) {
+    if (value === "" || value === null || value === undefined) return "";
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? String(Math.floor(n)) : "";
+  }
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(scores)); } catch (_) {}
+  }
+  function updateSummary() {
+    const t = scores.reduce((sum, row) => ({
+      blue: sum.blue + (Number(row.blue) || 0),
+      red: sum.red + (Number(row.red) || 0)
+    }), {blue: 0, red: 0});
+    document.getElementById("blueTotal").textContent = t.blue + "点";
+    document.getElementById("redTotal").textContent = t.red + "点";
+  }
+  function render() {
+    roundsEl.replaceChildren();
+    scores.forEach((row, index) => {
+      const card = document.createElement("div");
+      card.className = "round";
+      const heading = document.createElement("div");
+      heading.className = "round-head";
+      heading.textContent = `第${index + 1}エンド`;
+      const inputs = document.createElement("div");
+      inputs.className = "inputs";
+      for (const team of ["blue", "red"]) {
+        const wrap = document.createElement("div");
+        const label = document.createElement("label");
+        label.className = team === "blue" ? "blue-label" : "red-label";
+        label.textContent = team === "blue" ? "青チーム" : "赤チーム";
+        label.htmlFor = `${team}-${index}`;
+        const input = document.createElement("input");
+        input.id = `${team}-${index}`;
+        input.type = "number";
+        input.inputMode = "numeric";
+        input.min = "0";
+        input.step = "1";
+        input.placeholder = "0";
+        input.setAttribute("aria-label", `第${index + 1}エンド ${label.textContent}の得点`);
+        input.value = row[team];
+        input.addEventListener("input", () => {
+          const cleaned = input.value === "" ? "" : valid(input.value);
+          if (input.value !== cleaned) input.value = cleaned;
+          scores[index][team] = cleaned;
+          save();
+          updateSummary();
+        });
+        wrap.append(label, input);
+        inputs.append(wrap);
+      }
+      card.append(heading, inputs);
+      roundsEl.append(card);
+    });
+    updateSummary();
+  }
+  document.getElementById("addRound").addEventListener("click", () => {
+    scores.push({blue: "", red: ""});
+    save();
+    render();
+    document.getElementById(`blue-${scores.length - 1}`).focus();
+  });
+  document.getElementById("reset").addEventListener("click", () => {
+    if (!confirm("すべての得点を消して、4エンドに戻しますか？")) return;
+    scores = Array.from({length: 4}, () => ({blue: "", red: ""}));
+    save();
+    render();
+  });
+  render();
+})();
+</script>
+</body>
+</html>
